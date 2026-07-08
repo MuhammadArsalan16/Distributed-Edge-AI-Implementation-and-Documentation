@@ -1,0 +1,86 @@
+Since we spent the time debugging and perfecting the exact compiler flags needed to bypass the RISC-V GCC 14 assembler bugs on Worker 2, we can now fly through the installation on **Worker 1** and **Worker 3** with 100% confidence.
+
+Run this exact block of commands on **Worker 1**, and then repeat the exact same steps on **Worker 3**.
+
+---
+
+### Step 1: Install the Required System Build Dependencies
+
+First, make sure the systems have the necessary compilers and build tools installed:
+
+```bash
+sudo apt update
+sudo apt install -y git cmake ninja-build build-essential clang
+
+```
+
+---
+
+### Step 2: Clone the Repository and Pull Submodules Safely
+
+We will use the `--depth 1` speed-hack we established earlier to ensure you don't spend hours downloading unnecessary historical Git files over your network:
+
+```bash
+# Move to your home directory
+cd ~
+
+# Clone the repository
+git clone https://github.com/iree-org/iree.git
+cd iree
+
+# Fast-download only the latest snapshot of hidden dependencies
+git submodule update --init --recursive --depth 1
+
+```
+
+---
+
+### Step 3: Run the Perfected CMake Configuration
+
+This command uses the exact hardware optimization adjustments we discovered: it strips the heavy compiler layers, drops Google Benchmark, disables modern exception tables, and turns off linker relaxation to prevent the `.uleb128` assembly error.
+
+```bash
+# Create and enter the build sandbox
+mkdir build && cd build
+
+# Run the optimized configuration engine
+cmake -G Ninja .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="-mno-relax -fno-exceptions -fno-asynchronous-unwind-tables" \
+    -DCMAKE_CXX_FLAGS="-mno-relax -fno-exceptions -fno-asynchronous-unwind-tables" \
+    -DIREE_BUILD_COMPILER=OFF \
+    -DIREE_BUILD_SAMPLES=OFF \
+    -DIREE_BUILD_TESTS=OFF \
+    -DIREE_BUILD_BENCHMARKS=OFF \
+    -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+    -DIREE_HAL_DRIVER_LOCAL_TASK=ON
+
+```
+
+---
+
+### Step 4: Compile and Install Globally
+
+Once CMake finishes writing the configuration files, fire up the compilation engine and copy the finished binary into your global execution environment:
+
+```bash
+# Compile the native C++ runtime (This will take a few minutes)
+ninja
+
+# Install the verified command line tool globally
+sudo cp tools/iree-run-module /usr/local/bin/
+
+```
+
+---
+
+### Step 5: Final Check
+
+Verify that the binary is completely operational on the node:
+
+```bash
+iree-run-module --help
+
+```
+
+Once you run this on both Worker 1 and Worker 3, your entire cluster's computing muscle will be perfectly unified and ready to run AI models! Let me know when they both report back with the clean help text screen.

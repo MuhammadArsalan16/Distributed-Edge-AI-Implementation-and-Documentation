@@ -1,0 +1,37 @@
+Network Troubleshooting Section (StarFive Debian Setup)
+
+If the Ethernet interface shows as "unmanaged" or "unavailable" in nmcli device status, it likely means the interface is manually configured in /etc/network/interfaces, preventing NetworkManager from controlling it.
+
+    To fix this, open the file using:
+    sudo nano /etc/network/interfaces
+    Then comment out the entire static IP configuration by adding '#' before every line related to the Ethernet interface (e.g., auto end0, iface end0 inet static, address, netmask, gateway, dns-nameservers).
+
+    Next, ensure NetworkManager is allowed to manage interfaces. Open the NetworkManager configuration:
+    sudo nano /etc/NetworkManager/NetworkManager.conf
+    Make sure the file contains the following:
+    [main]
+    plugins=ifupdown,keyfile
+    [ifupdown]
+    managed=true
+
+    Save the file and apply changes by restarting services:
+    sudo systemctl restart NetworkManager
+    sudo systemctl restart networking
+
+    Reboot the system:
+    sudo reboot
+
+    After reboot, check device status:
+    nmcli device status
+    The Ethernet interface should now show as "disconnected" or "connected", not unmanaged or unavailable.
+
+    If the connection still fails to activate due to a mismatched interface name, delete the old profile using:
+    sudo nmcli con delete "Wired connection X"
+    Then create a new connection bound to the correct interface (e.g., end0 or end1) using the desired static IP, gateway, and DNS.
+
+    Finally, confirm that DNS is working by checking:
+    cat /etc/resolv.conf
+    It should show at least one nameserver line, like:
+    nameserver 8.8.8.8
+
+If these steps are followed, the StarFive board should have proper IP assignment and internet access through the configured switch or router."

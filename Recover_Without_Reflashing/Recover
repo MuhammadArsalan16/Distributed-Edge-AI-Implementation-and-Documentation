@@ -1,0 +1,89 @@
+Recover Debian on microSD (StarFive) without reflashing
+This guide fixes a common boot failure where the kernel cannot find the root filesystem due to mismatched device naming (e.g., mmcblk0p4 vs mmcblk1p4). The robust solution is to use a UUID (or PARTUUID) for the root partition so booting works regardless of how the kernel enumerates devices.
+You already confirmed the filesystems are clean and your boot partition contains kernel, initrd, DTBs, and extlinux config.
+
+Prerequisites
+    • Another Linux machine (your laptop) with an SD card reader.
+    • Your microSD inserted and showing as e.g. /dev/sda with:
+        ◦ /dev/sda3 → boot (FAT)
+        ◦ /dev/sda4 → root (ext4)
+    • Basic terminal tools: lsblk, blkid, mount, sed, nano.
+On the board (StarFive / SBC), the SD card may appear as /dev/mmcblk0pX or /dev/mmcblk1pX. This inconsistency is the root cause of the boot error.
+
+Step 0 — Verify filesystem health
+sudo fsck -y /dev/sda3   # FAT boot
+sudo fsck -y /dev/sda4   # ext4 root
+Expect clean or repaired without fatal errors.
+
+Step 1 — Mount the boot partition and inspect config
+sudo mkdir -p /mnt/bootpart
+sudo mount /dev/sda3 /mnt/bootpart
+ls -l /mnt/bootpart/extlinux
+cat /mnt/bootpart/extlinux/extlinux.conf
+You should see entries like:
+linux /vmlinuz-5.15.0-starfive
+initrd /initrd.img-5.15.0-starfive
+fdtdir /dtbs
+append root=/dev/mmcblk1p4 rw console=tty0 console=ttyS0,115200 earlycon rootwait ...
+
+Step 2 — Get the UUID of the root partition
+On your laptop, run:
+sudo blkid /dev/sda4
+Sample output:
+/dev/sda4: UUID="11111111-2222-3333-4444-555555555555" TYPE="ext4"
+Copy the UUID string.
+
+Step 3 — Update extlinux.conf to use UUID
+    1. Backup the config:
+sudo cp /mnt/bootpart/extlinux/extlinux.conf /mnt/bootpart/extlinux/extlinux.conf.bak
+    2. Edit the file:
+sudo nano /mnt/bootpart/extlinux/extlinux.conf
+    3. Change lines like:
+append root=/dev/mmcblk1p4 rw console=tty0 console=ttyS0,115200 earlycon rootwait ...
+to:
+append root=UUID=11111111-2222-3333-4444-555555555555 rw console=tty0 console=ttyS0,115200 earlycon rootwait ...
+    4. Do the same change for the rescue entry.
+    5. Save (Ctrl+O, Enter), exit (Ctrl+X).
+    6. Unmount:
+sudo umount /mnt/bootpart
+    7. Reinsert into the board and boot.
+Now the kernel will always find the correct partition by UUID, regardless of mmcblk0 or mmcblk1 naming.
+
+Step 4 — Post‑boot hardening (once the system boots)
+When you’re in Debian on the board:
+# Ensure initramfs and boot menu are in sync
+sudo apt update
+sudo apt install --reinstall u-boot-menu
+sudo u-boot-update   # regenerates /extlinux/extlinux.conf
+
+# Ensure kernel + initramfs are current
+sudo update-initramfs -u -k all
+
+# Verify extlinux.conf still uses UUID
+cat /boot/extlinux/extlinux.conf
+If u-boot-update overwrites the config with /dev/mmcblk*, set the UUID permanently in /etc/default/u-boot or /etc/default/u-boot-menu:
+U_BOOT_ROOT="UUID=11111111-2222-3333-4444-555555555555"
+Then run:
+sudo u-boot-update
+
+Troubleshooting tips
+    • Error: VFS: Cannot open root device → UUID is wrong or mistyped.
+    • Error: Waiting for root device UUID=... → initramfs missing UUID support (rare in Debian). Rebuild initramfs with update-initramfs -u.
+    • Revert quickly:
+sudo mount /dev/sda3 /mnt/bootpart
+sudo cp /mnt/bootpart/extlinux/extlinux.conf.bak /mnt/bootpart/extlinux/extlinux.conf
+sudo umount /mnt/bootpart
+    • Card hardware issues? Clone with ddrescue before further edits:
+sudo ddrescue -f -n /dev/sda sdcard.img sdrescue.log
+
+Appendix — Useful one‑liners
+Print only the critical lines from extlinux.conf:
+grep -E '^(default|menu|label|linux|initrd|fdtdir|append)' /mnt/bootpart/extlinux/extlinux.conf
+Get just the UUID of /dev/sda4:
+sudo blkid -s UUID -o value /dev/sda4
+Replace old root= with UUID automatically:
+UUID=$(sudo blkid -s UUID -o value /dev/sda4)
+sudo sed -i.bak "s#root=/dev/mmcblk[0-9]p4#root=UUID=${UUID}#g" /mnt/bootpart/extlinux/extlinux.conf
+
+Outcome
+After replacing root=/dev/mmcblkXp4 with root=UUID=..., the board will boot correctly without worrying about mmcblk0 vs mmcblk1 differences, and no reflash is needed.

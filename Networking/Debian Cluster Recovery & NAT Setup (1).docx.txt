@@ -1,0 +1,171 @@
+Complete Troubleshooting Log: Debian Cluster sid & Network Recovery
+Environment Overview
+OS: Debian sid (unstable) / RISC-V architecture
+Master Node: * eth0 (Local): 192.168.50.10
+eth1 (External): 172.16.x.x
+Worker2 Node: 192.168.50.12
+Worker3 Node: end1 (192.168.50.13)
+Previous Topology: A laptop at 192.168.50.3 was acting as the cluster's internet bridge.
+Phase 1: The APT usrmerge Circular Dependency Crisis
+The Initial State & Conflict
+The system had 1050 packages held back. We needed to install sshfs, but base-files was held, creating a dependency conflict with usrmerge and libc-bin.
+Attempt 1: Standard APT Install (Failed)
+
+Bash
+
+
+sudo apt-mark hold base-filessudo apt-get install usrmerge -y
+Result: Failed. usrmerge conflicted with the older libc-bin.
+Attempt 2: Forcing the Core Libraries (Failed)
+
+Bash
+
+
+sudo apt-get install usrmerge libc-bin libc6 locales -y
+Result: Failed. libc6 broke base-files because apt refused to upgrade base-files until the /bin directory was converted into a symlink by usrmerge.
+Attempt 3: DPKG Force-Depends (Failed)
+We dropped down to dpkg to bypass apt.
+
+Bash
+
+
+sudo apt-mark unhold base-filesapt-get download usrmergesudo dpkg -i --force-depends usrmerge_*.deb
+Result: Failed. apt attempted to pre-configure base-files before usrmerge could finish running, triggering an error exit status 1 because /bin was still a directory.
+The Final Solution: DPKG Force-All (The Nuclear Option)
+We had to instruct dpkg to completely ignore all errors, dependencies, and conflicts to force the Perl script inside usrmerge to execute and physically alter the filesystem.
+1. Download the package:
+
+Bash
+
+
+apt-get download usrmerge
+2. Force execution:
+
+Bash
+
+
+sudo dpkg -i --force-all usrmerge_*.deb
+3. Verify the /bin conversion:
+
+Bash
+
+
+ls -ld /bin
+(Output confirmed /bin was successfully converted to a symlink pointing to /usr/bin)
+4. Repair the broken package tree:
+
+Bash
+
+
+sudo apt-get --fix-broken install -y
+5. Install the original target package:
+
+Bash
+
+
+sudo apt-get install sshfs --no-install-recommends -y
+Phase 2: Cluster Network Outage & Diagnostics
+After the bridging laptop was powered down, the entire cluster lost internet access, and nodes lost the ability to communicate with each other.
+1. Master Node Diagnostics
+Checked the routing table to see where traffic was trying to go:
+
+Bash
+
+
+ip route
+Output revealed a dead gateway: default via 192.168.50.3 dev eth0
+Checked external internet connectivity:
+
+Bash
+
+
+ping 8.8.8.8
+Output: Destination Host Unreachable
+The Fix for Master: Deleted the dead route explicitly.
+
+Bash
+
+
+sudo ip route del default via 192.168.50.3 dev eth0ping 8.8.8.8
+(Ping succeeded. Master internet restored via eth1).
+2. Worker2 Connectivity Diagnostics
+Attempted to reach Worker2 from the Master node.
+
+Bash
+
+
+ping -c 4 192.168.50.12
+Output: Destination Host Unreachable / No route to host
+Checked the ARP / IP Neighbor table to see if Worker2 was on the local network:
+
+Bash
+
+
+ip neigh
+Output: 192.168.50.12 dev eth0 FAILED (Worker2 was completely unresponsive at the hardware/MAC layer).
+Checked SSH verbosity to rule out firewall/key issues:
+
+Bash
+
+
+ssh -vvv user@192.168.50.12
+Output: connect to host 192.168.50.12 port 22: No route to host.
+(Conclusion: Worker2 has a physical layer disconnection, a power issue, or lost its IP entirely. Requires local console access to resolve).
+3. Worker3 Network Diagnostics
+Worker3 also had no internet. Checked its routing table:
+
+Bash
+
+
+ip route
+Output: default via 192.168.50.10 dev end1.
+(Conclusion: Worker3 was correctly sending traffic to the Master node, but the Master node was not forwarding it).
+Phase 3: Promoting Master Node to a NAT Router
+To replace the missing laptop, the Master node needed to be configured to route traffic from the eth0 subnet (192.168.50.x) out to the internet via eth1.
+1. Temporary Routing (Proof of Concept)
+Run on Master node:
+
+Bash
+
+
+sudo sysctl -w net.ipv4.ip_forward=1sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+Tested on Worker3:
+
+Bash
+
+
+ping 8.8.8.8
+(Ping succeeded. Routing was functional).
+2. Making the Configuration Permanent
+Step A: Persistent IP Forwarding (Master)
+
+Bash
+
+
+sudo nano /etc/sysctl.conf
+Action: Uncommented net.ipv4.ip_forward=1.
+Step B: Persistent Firewall Rules (Master)
+Installed the persistent package and saved the active NAT rule to survive reboots:
+
+Bash
+
+
+sudo apt-get install iptables-persistent -ysudo netfilter-persistent save
+Step C: Cleaning up NetworkManager (Master & Worker3)
+We checked the NetworkManager configuration files to find out why the dead gateway (192.168.50.3) kept reappearing.
+
+Bash
+
+
+sudo cat /etc/NetworkManager/system-connections/local-net.nmconnection
+Discovery: The Master's eth0 configuration had address1=192.168.50.10/24,192.168.50.3.
+We used nmcli to strip the dead gateway out of the connection profile while keeping the Master's static IP intact:
+
+Bash
+
+
+sudo nmcli connection modify local-net ipv4.addresses "192.168.50.10/24" ipv4.gateway ""sudo nmcli connection up local-net
+Final Cluster Network State
+Master Node: Successfully functions as the primary internet gateway via eth1, providing NAT for the 192.168.50.x subnet.
+Worker3: Successfully configured with a persistent route pointing to 192.168.50.10.
+Worker2: Remains offline pending physical hardware/console inspection.

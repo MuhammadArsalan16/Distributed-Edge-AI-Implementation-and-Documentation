@@ -1,0 +1,29 @@
+ Master Node (SSH Key Setup & Transfer)
+
+    ssh-keygen -t rsa — Generates a public-private SSH key pair (press Enter to accept defaults).
+
+    ssh-copy-id user@192.168.50.64 — Copies the master’s public key to the worker node for password-less login.
+
+    ssh user@192.168.50.64 — Verifies that the master can now SSH into the worker without entering a password.
+
+ Worker Node (SSH Access Configuration)
+
+    sudo apt install openssh-server — Installs the SSH server if not already installed.
+
+    sudo systemctl enable ssh — Enables the SSH service to start on boot.
+
+    sudo systemctl start ssh — Starts the SSH service immediately.
+
+    sudo nano /etc/ssh/sshd_config — Opens the SSH configuration file for editing.
+
+    PasswordAuthentication no — (Edit inside the file) Disables password-based login (optional, for enhanced security).
+
+    PermitRootLogin no — (Edit inside the file) Disallows root login via SSH (recommended).
+
+    sudo systemctl restart ssh — Applies the new SSH configuration by restarting the SSH service.
+
+To Send File:
+scp filename username@ip:location to where the file will be sent.
+e.g. scp myfile.txt@192.168.50.64:/home/user/
+
+

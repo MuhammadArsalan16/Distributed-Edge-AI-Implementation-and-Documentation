@@ -1,0 +1,13 @@
+Master Node Network Configuration (Debian)
+
+    Use the dhclient command on the interface end1 to obtain a dynamic IP address via DHCP.
+
+    Check the assigned IP address and gateway using nmcli dev show end1.
+
+    Identify the network connection name using the nmcli connection show command. The name is usually something like "Wired connection 2".
+
+    Set a static IP address by modifying the connection using nmcli. Specify the IP address you got from DHCP, the subnet mask (in CIDR format, usually /24), and the gateway address. Also set the IP method to manual.
+
+    Apply the new settings by bringing the connection down and then back up again using nmcli connection down and nmcli connection up.
+
+    Confirm that the IP address has been set statically by verifying it with ip addr show.

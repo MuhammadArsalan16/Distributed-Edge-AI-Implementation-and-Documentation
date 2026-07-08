@@ -1,0 +1,62 @@
+echo "Static IP Configuration Using nmcli (StarFive Debian Setup)
+
+    Show available network devices and identify the Ethernet interface:
+    nmcli device status
+
+    Delete old or broken profiles if needed (replace with actual names if different):
+    sudo nmcli connection delete "Wired connection 1"
+    sudo nmcli connection delete "Wired connection 2"
+
+    Create a new static connection (replace end1 with your actual interface):
+    sudo nmcli connection add type ethernet ifname end1 con-name star_net ipv4.addresses 192.168.50.56/24 ipv4.gateway 192.168.50.3 ipv4.dns "8.8.8.8 1.1.1.1" ipv4.method manual
+
+    Activate the new connection:
+    sudo nmcli connection up star_net
+
+    Confirm assigned IP address:
+    ip a
+
+    Check DNS nameservers:
+    cat /etc/resolv.conf
+    You should see: nameserver 8.8.8.8 and nameserver 1.1.1.1
+
+    Test raw internet connection:
+    ping -c 4 8.8.8.8
+
+    Test DNS resolution and full internet access:
+    ping -c 4 google.com
+
+Optional Cleanup (if /etc/network/interfaces was edited earlier)
+
+Open the file:
+sudo nano /etc/network/interfaces
+
+Comment out any lines related to the Ethernet interface by adding # at the beginning of each line, for example:
+auto end0
+iface end0 inet static
+address 192.168.50.56
+netmask 255.255.255.0
+gateway 192.168.50.3
+dns-nameservers 8.8.8.8 1.1.1.1
+
+Save and exit.
+
+Enable NetworkManager to manage interfaces by editing:
+sudo nano /etc/NetworkManager/NetworkManager.conf
+
+Ensure it contains the following lines:
+[main]
+plugins=ifupdown,keyfile
+[ifupdown]
+managed=true
+
+Restart the services:
+sudo systemctl restart NetworkManager
+sudo systemctl restart networking
+
+Then reboot:
+sudo reboot
+
+After reboot, run again:
+nmcli device status
+→ You should see the interface listed as “connected” or “disconnected” (not “unmanaged” or “unavailable”).

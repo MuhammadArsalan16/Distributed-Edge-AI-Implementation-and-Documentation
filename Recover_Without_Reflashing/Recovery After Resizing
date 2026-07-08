@@ -1,0 +1,82 @@
+🧭 StarFive Debian Recovery & Partition Resize Manual (with Commands)
+
+Purpose:
+This manual guides you step by step to fix partition table errors (like GPT PMBR mismatch), resize the root partition to use the full disk, and make sure the system boots properly afterward.
+
+STEP 1 — Check Partition Table
+
+First, check the partition layout of the SD card or eMMC to see if there’s any GPT error message.
+
+Command:
+sudo fdisk -l
+
+If you see a message such as “GPT PMBR size mismatch” or “The backup GPT table is not on the end of the device,” then you need to repair the GPT table in the next step.
+
+STEP 2 — Fix the GPT Table Using GDisk
+
+Open the gdisk tool for the SD card or eMMC (e.g., /dev/mmcblk1 or /dev/sda depending on your device).
+
+Command:
+sudo gdisk /dev/mmcblk1
+
+Inside gdisk, verify the GPT structure:
+
+Command:
+v
+
+If any problems are found, write the fixed GPT to disk:
+
+Command:
+w
+
+Then confirm the write when asked. Exit gdisk and re-run fdisk to ensure the GPT PMBR error is gone.
+
+Command:
+sudo fdisk -l
+
+If the error message no longer appears, the GPT table is now correct.
+
+STEP 3 — Resize the Root Partition to Use the Full Disk
+
+Now you’ll enlarge the root partition (usually partition 4 on StarFive images) to fill all remaining unallocated space.
+
+Open parted on the SD card:
+
+Command:
+sudo parted /dev/mmcblk1
+
+Inside parted, resize the partition (replace “4” with the partition number if different):
+
+Command:
+resizepart 4 100%
+
+When parted asks if you want to continue because the partition is in use, type Yes.
+
+After resizing, exit parted:
+
+Command:
+quit
+
+STEP 4 — Resize the Filesystem
+
+After expanding the partition, enlarge the ext4 filesystem so that it uses all the newly allocated space.
+
+Command:
+sudo resize2fs /dev/mmcblk1p4
+
+The tool will display the old and new block counts. If it reports that the filesystem is now larger, the operation was successful.
+
+STEP 5 — Check and Update the fstab File
+
+Mount the root partition if you are working from another system, or access it directly if the card is in your machine. Then, check the UUID of the root partition:
+
+Command:
+sudo blkid /dev/mmcblk1p4
+
+Copy the UUID shown. Then open the fstab file to verify the entry:
+
+Command:
+sudo nano /etc/fstab
+
+Ensure that the UUID in this file matches the one reported by blkid. If not, replace it with the correct UUID.
+For example, your fstab entry should look like:

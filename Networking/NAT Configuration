@@ -1,0 +1,119 @@
+Here is a clean, well-structured **documentation section** you can copy into your report.
+It includes **NAT explanation + full commands for master and workers**.
+
+---
+
+## 🔧 NAT Configuration for Internet Access in the Cluster
+
+### 🎯 Objective
+
+Enable all worker nodes in the private cluster network (`192.168.50.0/24`) to access the internet through the master node, which has the only external (university-provided) internet connection via interface `eth1`.
+
+---
+
+### 🖥️ Network Details
+
+| Node    | Interface | IP Address       | Purpose                   |
+| ------- | --------- | ---------------- | ------------------------- |
+| Master  | eth0      | 192.168.50.10/24 | Cluster network           |
+| Master  | eth1      | 172.16.90.2/16   | Internet (University LAN) |
+| Workers | eth0      | 192.168.50.11-13 | Internal cluster nodes    |
+
+---
+
+## ✅ Steps on Master Node
+
+### 1️⃣ Enable IP Forwarding (Routing)
+
+```bash
+sudo sysctl -w net.ipv4.ip_forward=1
+```
+
+Make it persistent:
+
+```bash
+echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
+```
+
+---
+
+### 2️⃣ Configure NAT (Masquerading)
+
+```bash
+sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+```
+
+Verify rule:
+
+```bash
+sudo iptables -t nat -L -n -v
+```
+
+(Optional) Save iptables rule permanently (Ubuntu/Debian):
+
+```bash
+sudo apt install iptables-persistent
+sudo netfilter-persistent save
+```
+
+---
+
+### 3️⃣ Fix Routing Table on Master
+
+Remove wrong default route if it exists:
+
+```bash
+sudo ip route del default via 192.168.50.10
+```
+
+Final routing (expected):
+
+```bash
+ip route
+```
+
+Should display:
+
+```
+default via 172.16.0.3 dev eth1
+172.16.0.0/16 dev eth1 src 172.16.90.2
+192.168.50.0/24 dev eth0 src 192.168.50.10
+```
+
+---
+
+## ✅ Steps on Each Worker Node
+
+### 1️⃣ Set Default Gateway (Master Node)
+
+```bash
+sudo ip route add default via 192.168.50.10
+```
+
+### 2️⃣ Test Connectivity
+
+```bash
+ping 192.168.50.10        # ping master
+ping 8.8.8.8              # ping Google DNS
+ping google.com           # test DNS + internet
+```
+
+---
+
+## 🔍 How It Works (Explanation)
+
+* Workers send all external traffic to the master (`192.168.50.10`).
+* Master is configured as a router using IP forwarding.
+* NAT (`MASQUERADE`) rewrites internal worker IPs to master’s public IP (`172.16.90.2`).
+* Return packets are translated back automatically.
+
+This is the same technique used in home routers or Wi-Fi hotspots.
+
+---
+
+✅ **Result:**
+All worker nodes can now access the internet even though they do not have public IPs.
+
+---
+
+If you'd like, I can also provide a **troubleshooting section** and a **diagram** for your documentation.
